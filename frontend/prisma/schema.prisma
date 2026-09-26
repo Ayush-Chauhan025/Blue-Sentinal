@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  name        String?
+  role        Role     @default(USER)
+  totalPoints Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  reports Verification[]
+}
+
+model Node {
+  id        String     @id @default(uuid())
+  lat       Float
+  lng       Float
+  status    NodeStatus @default(UNVERIFIED)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  verifications Verification[]
+}
+
+enum NodeStatus {
+  UNVERIFIED
+  PENDING_ADMIN_REVIEW
+  RESOLVED
+  FALSE_ALARM
+}
+
+model Verification {
+  id            String   @id @default(uuid())
+  userId        String
+  nodeId        String
+  aiStatus      String
+  imageUrl      String?
+  pointsAwarded Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  node Node @relation(fields: [nodeId], references: [id])
+}

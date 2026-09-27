@@ -5,3 +5,5 @@ shapely
 fastapi
 uvicorn
 scikit-learn
+httpx
+apscheduler

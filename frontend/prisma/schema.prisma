@@ -26,7 +26,7 @@ model Node {
   id        String     @id @default(uuid())
   lat       Float
   lng       Float
-  status    NodeStatus @default(UNVERIFIED)
+  status    NodeStatus @default(ACTIVE)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -34,21 +34,35 @@ model Node {
 }
 
 enum NodeStatus {
-  UNVERIFIED
+  ACTIVE
   PENDING_ADMIN_REVIEW
   RESOLVED
-  FALSE_ALARM
 }
 
 model Verification {
-  id            String   @id @default(uuid())
-  userId        String
-  nodeId        String
-  aiStatus      String
-  imageUrl      String?
-  pointsAwarded Int      @default(0)
-  createdAt     DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  nodeId    String
+  aiStatus  String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  waterStatus      String
+  mosquitoPresence String
 
   user User @relation(fields: [userId], references: [id])
   node Node @relation(fields: [nodeId], references: [id])
+
+  fhirReport FHIRReport?
+}
+
+model FHIRReport {
+  id String @id @default(uuid())
+
+  verificationId String       @unique
+  verification   Verification @relation(fields: [verificationId], references: [id])
+
+  payload Json
+
+  createdAt DateTime @default(now())
 }

@@ -1,3 +1,4 @@
+"use client"
 import { SignOut } from "@/app/login/actions";
 import { Menu, User } from "lucide-react";
 import { useState } from "react";

@@ -2,7 +2,7 @@
 "use client"
 
 import { usePathname } from "next/navigation";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
 import { parseMapUrl } from "./parseMapURL";
 
 const MapContext = createContext<MapContextValue | null>(null);
@@ -68,7 +68,6 @@ export type MapState = {
 
 export type UserMapState = {
   isNavigating: boolean;
-  isActive: boolean;
   liveLoc: [number, number] | null;
 }
 
@@ -85,16 +84,13 @@ const intialMapState: MapState = {
     origin: null,
     destination: null,
     route: null,
-    stagnantNodes: [
-      { id: 1, lat: 52.3710, lng: 4.8964 },
-      { id: 2, lat: 52.3725, lng: 4.8870 }
-    ]
+    stagnantNodes: null
 }
 
 const intialUserMapState: UserMapState = {
-  isActive: true,
   isNavigating: false,
-  liveLoc: null // [4.8964,52.3710]
+  // liveLoc: null
+  liveLoc: [4.8964,52.3710]
 }
 
 
@@ -103,7 +99,12 @@ export function MapProvider({ children }: { children: ReactNode }) {
     const [state, setState] = useState<MapState>(intialMapState);
     const [userState, setUserState] = useState<UserMapState>(intialUserMapState);
 
-    const DEMO_NODE = { id: 1, lat: 52.37, lng: 4.89 };
+    const activeNodesRef = useRef(state.stagnantNodes);
+    
+    useEffect(() => {
+        activeNodesRef.current = state.stagnantNodes;
+    }, [state.stagnantNodes]);
+
     useEffect(() => {
       const urlState = parseMapUrl(pathname);
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -122,20 +123,30 @@ export function MapProvider({ children }: { children: ReactNode }) {
             end_lat: state.destination[1]
         };
 
-        fetch('http://localhost:8000/api/v1/get-route', {
+        fetch('/api/routing', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         })
         .then(response => response.json())
         .then(data => {
+            if (data.error || !data.route) {
+                console.error("Backend routing failed:", data.error);
+                return;
+            }
+
             console.log("Route fetched successfully:", data);
             setRoute({
-                blueRoute: data.blue_route,
-                blueRouteLen: data.blue_route_length,
-                standardRoute: data.standard_route,
-                standardRouteLen: data.standard_route_len
+                blueRoute: data.route.blue_route,
+                blueRouteLen: data.route.blue_route_length,
+                standardRoute: data.route.standard_route,
+                standardRouteLen: data.route.standard_route_length
             });
+
+            setState((cur) => ({
+              ...cur,
+              stagnantNodes: data.nodes
+            }));
         })
         .catch(err => {
             console.error("Failed to fetch route:", err);
@@ -193,9 +204,6 @@ export function MapProvider({ children }: { children: ReactNode }) {
             const currentLng = position.coords.longitude;
             
             setUserState((cur) => ({...cur, liveLoc: [currentLng, currentLat]}));
-
-            const distance = getDistanceInMeters(currentLat, currentLng, DEMO_NODE.lat, DEMO_NODE.lng);
-            setUserState((cur) => ({...cur, isActive: distance < 50}));
           },
           (error) => console.error("GPS Error:", error),
           { enableHighAccuracy: true }

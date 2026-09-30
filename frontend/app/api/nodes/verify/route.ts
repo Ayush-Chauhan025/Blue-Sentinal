@@ -26,7 +26,7 @@ export async function POST(req: Request){
         const base64Data = matches[2];
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-3.8-flash',
             generationConfig: { responseMimeType: "application/json" }
         })
 
@@ -48,7 +48,7 @@ export async function POST(req: Request){
         const responseText = result.response.text();
 
         const AIDecision = JSON.parse(responseText);
-
+        console.log(AIDecision)
         if(AIDecision.status === "STAGNANT" || AIDecision.status === "FLOWING"){
             // lock node and update db
 

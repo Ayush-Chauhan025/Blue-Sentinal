@@ -1,11 +1,11 @@
 "use client";
-
+import { submitVerification } from "@/app/actions/verification";
 import { setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import Map, { Layer, MapLayerMouseEvent, Marker, Popup, Source } from "react-map-gl/maplibre";
+import Map, { Layer, MapLayerMouseEvent, Marker, Popup, Source, MapRef } from "react-map-gl/maplibre";
 import { getDistanceInMeters, useMap } from "@/contexts/MapContext";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 if (typeof window !== "undefined") {
   setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
@@ -24,6 +24,18 @@ export default function MapComponent() {
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedNode, setSelectedNode] = useState<any>(null);
+
+  const mapRef = useRef<MapRef>(null);
+
+useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.easeTo({
+        pitch: state.is3D ? 60 : 0,
+        bearing: state.is3D ? -17.6 : 0,
+        duration: 800 
+      });
+    }
+  }, [state.is3D]);
 
   const handleMapClick = async (event: MapLayerMouseEvent) => {
     console.log(state.mode);
@@ -69,8 +81,8 @@ export default function MapComponent() {
           latitude: state.viewport.latitude,
           zoom: state.viewport.zoom,
         }}
-        pitch={state.is3D ? 60 : 0}
-        bearing={state.is3D ? -17.6 : 0}
+        // pitch={state.is3D ? 60 : 0}
+        // bearing={state.is3D ? -17.6 : 0}
         mapStyle={MAP_STYLES[state.MAP_STYLE]}
         style={{
           width: '100%',
@@ -78,6 +90,7 @@ export default function MapComponent() {
         }}
         onLoad={(event) => event.target.resize()}
         onClick={handleMapClick}
+        ref={mapRef}
       >
         {state.origin && (
           <Marker longitude={state.origin[0]} latitude={state.origin[1]} color="#10B981" />
@@ -154,7 +167,7 @@ export default function MapComponent() {
           </Marker>
         )}
 
-        {state.stagnantNodes && userState.liveLoc && state.stagnantNodes.map((node) => {
+        {state.stagnantNodes && userState.isNavigating && state.route && userState.liveLoc && state.stagnantNodes.map((node) => {
           if(!userState.liveLoc) return;
           const distance = getDistanceInMeters(userState.liveLoc[1], userState.liveLoc[0], node.lat, node.lng);
           if(distance < 100) return <Marker 
@@ -186,7 +199,7 @@ export default function MapComponent() {
             anchor="bottom"
           >
             <div className="bg-neutral-900 border border-neutral-700 p-4 rounded-xl text-white shadow-2xl max-w-xs text-center">
-              <h3 className="font-bold text-red-400 mb-1">Stagnation Node</h3>
+              <h3 className="font-bold text-red-400 mb-1">Risk Node</h3>
               
               {(() => {
                 if (!userState.liveLoc) return <p className="text-sm text-neutral-400">Start your route to track distance.</p>;
@@ -208,48 +221,99 @@ export default function MapComponent() {
                   return (
                     <div className="mt-3">
                       <p className="text-xs text-green-400 font-bold mb-2">Target in range!</p>
-                      <label className="block w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-2 px-4 rounded-lg cursor-pointer transition-all">
-                        VERIFY
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          capture="environment" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.readAsDataURL(file);
-
-                              reader.onload = async () => {
-                                const base64Image = reader.result;
-                                try{
-                                  const response = await fetch(`/api/nodes/verify`,{
-                                    method: "POST",
-                                    headers: {"Content-Type": "application/json"},
-                                    body:JSON.stringify({
-                                      image: base64Image, 
-                                      nodeId: selectedNode.id,
-                                      userId: "user_123"
-                                    })
-                                  })
-                                  const result = await response.json();
-
-                                  if(result.success){
-                                    alert(`${result.message}`);
-                                    setStagnantNodes(selectedNode.id);
-                                    setSelectedNode(null);
-                                  } else {
-                                    alert(`${result.message}`);
+                    
+                      {!selectedNode.aiScanned ? (
+                        <label className="block text-sm w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-2 px-4 rounded-lg cursor-pointer transition-all text-center">
+                          {selectedNode.isScanning ? "SCANNING WITH AI..." : "SCAN ENVIRONMENT"}
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            capture="environment" 
+                            className="hidden"
+                            disabled={selectedNode.isScanning}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setSelectedNode({...selectedNode, isScanning: true});
+                                const reader = new FileReader();
+                                reader.readAsDataURL(file);
+                                reader.onload = async () => {
+                                  try {
+                                    const response = await fetch(`/api/nodes/verify`, {
+                                      method: "POST",
+                                      headers: {"Content-Type": "application/json"},
+                                      body: JSON.stringify({ image: reader.result, nodeId: selectedNode.id })
+                                    });
+                                    const result = await response.json();
+                                    
+                                    if(result.success) {
+                                      setSelectedNode({
+                                        ...selectedNode, 
+                                        isScanning: false, 
+                                        aiScanned: true, 
+                                        aiStatus: result.aiStatus 
+                                      });
+                                    } else {
+                                      alert(`AI Rejected: ${result.message}`);
+                                      setSelectedNode({...selectedNode, isScanning: false});
+                                    }
+                                  } catch (err) {
+                                    console.error(err);
+                                    setSelectedNode({...selectedNode, isScanning: false});
                                   }
-                                } catch (err) {
-                                  console.log(err)
-                                }
+                                };
                               }
-                            }  
-                          }} 
-                        />
-                      </label>
+                            }}
+                          />
+                        </label>
+                      ) : (
+                        <div className="flex flex-col gap-2 text-left mt-4 animate-in fade-in zoom-in duration-300">
+                          <div className="bg-green-900/50 text-green-400 p-2 rounded text-xs border border-green-500/30 mb-2">
+                            AI Check Passed: {selectedNode.aiStatus}
+                          </div>
+                          
+                          <label className="text-xs font-bold text-neutral-300">Water Status</label>
+                          <select 
+                            className="bg-neutral-800 border border-neutral-600 rounded p-1.5 text-sm mb-2"
+                            onChange={(e) => setSelectedNode({...selectedNode, waterStatus: e.target.value})}
+                            defaultValue=""
+                          >
+                            <option value="" disabled>Select status...</option>
+                            <option value="Stagnant">Stagnant / Still</option>
+                            <option value="Flowing">Flowing / Clear</option>
+                            <option value="Dry">Completely Dry</option>
+                          </select>
+
+                          <label className="text-xs font-bold text-neutral-300">Mosquito Presence</label>
+                          <select 
+                            className="bg-neutral-800 border border-neutral-600 rounded p-1.5 text-sm mb-4"
+                            onChange={(e) => setSelectedNode({...selectedNode, mosquitoStatus: e.target.value})}
+                            defaultValue=""
+                          >
+                            <option value="" disabled>Select status...</option>
+                            <option value="Larvae Visible">Larvae Visible in Water</option>
+                            <option value="Adults Present">Adult Mosquitoes Present</option>
+                            <option value="None">None Detected</option>
+                          </select>
+
+                          <button 
+                            disabled={!selectedNode.waterStatus || !selectedNode.mosquitoStatus}
+                            onClick={async () => {
+                              await submitVerification(
+                                selectedNode.id, 
+                                selectedNode.waterStatus, 
+                                selectedNode.mosquitoStatus
+                              );
+                              
+                              setStagnantNodes(selectedNode.id);
+                              setSelectedNode(null);
+                            }}
+                            className="w-full bg-blue-600 disabled:bg-neutral-700 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition-all"
+                          >
+                            Submit Report
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 }
